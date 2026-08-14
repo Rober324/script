@@ -1,6 +1,9 @@
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-# 1. XAML con Animaciones (Storyboards)
+# 1. Crear Hashtable sincronizada para comunicar los hilos
+$syncHash = [hashtable]::Synchronized(@{})
+
+# 2. XAML con Animaciones
 $xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -18,7 +21,6 @@ $xaml = @"
     </Window.Triggers>
     <Border Background="Black" CornerRadius="10">
         <Grid>
-            <!-- Anillo Giratorio -->
             <Ellipse x:Name="Ring" Width="90" Height="90" Stroke="#ff4500" StrokeThickness="4" StrokeDashArray="3 1" RenderTransformOrigin="0.5,0.5">
                 <Ellipse.RenderTransform>
                     <RotateTransform Angle="0" />
@@ -27,7 +29,6 @@ $xaml = @"
                     <DropShadowEffect Color="#ff0000" BlurRadius="15" ShadowDepth="0" />
                 </Ellipse.Effect>
             </Ellipse>
-            <!-- Núcleo Brillante -->
             <Ellipse x:Name="Core" Width="40" Height="40" Fill="#ffaa00">
                 <Ellipse.Effect>
                     <DropShadowEffect Color="#ffaa00" BlurRadius="20" ShadowDepth="0" />
@@ -43,23 +44,34 @@ $xaml = @"
 </Window>
 "@
 
-# 2. Iniciar la ventana de carga en un Hilo Separado
+# 3. Iniciar la ventana de carga en un Hilo Separado
 $runspace = [runspacefactory]::CreateRunspace()
 $runspace.ApartmentState = "STA"
 $runspace.Open()
 $ps = [powershell]::Create().AddScript({
+    param($xaml, $syncHash)
     Add-Type -AssemblyName PresentationFramework
-    $window = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader([xml]$args[0])))
+    $window = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader([xml]$xaml)))
+    
+    # Guardamos la referencia de la ventana en el hashtable para poder manipularla desde afuera
+    $syncHash.Window = $window
+    
     $window.ShowDialog()
-}).AddArgument($xaml)
+}).AddArgument($xaml).AddArgument($syncHash)
+
 $ps.Runspace = $runspace
 $handle = $ps.BeginInvoke()
 
-# 3. Iniciar la Descarga de la app en el hilo principal
+# 4. Iniciar la Descarga de la app
 $p = "$env:temp\PLAYSTEAM_NATIVO.exe"
 (New-Object Net.WebClient).DownloadFile('https://github.com/Rober324/PLAYSTEAM_AUTOLOGIN/releases/latest/download/PLAYSTEAM_NATIVO.exe', $p)
 
-# 4. Limpiar la ventana de carga y Ejecutar como Administrador
+# 5. Forzar el cierre de la ventana enviando el comando a su hilo (Dispatcher)
+if ($syncHash.Window) {
+    $syncHash.Window.Dispatcher.Invoke([action]{ $syncHash.Window.Close() })
+}
+
+# 6. Limpieza y Ejecución como Administrador
 $ps.Stop()
 $ps.Dispose()
 $runspace.Close()
