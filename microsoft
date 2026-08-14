@@ -53,22 +53,33 @@ $ps = [powershell]::Create().AddScript({
     Add-Type -AssemblyName PresentationFramework
     $window = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader([xml]$xaml)))
     
-    # Guardamos la referencia de la ventana en el hashtable para poder manipularla desde afuera
+    # Reportamos que la ventana ha sido creada
     $syncHash.Window = $window
     
-    $window.ShowDialog()
+    $window.ShowDialog() | Out-Null
 }).AddArgument($xaml).AddArgument($syncHash)
 
 $ps.Runspace = $runspace
 $handle = $ps.BeginInvoke()
 
+# --- ESPERA CRÍTICA ---
+# Pausar la descarga hasta que el hilo gráfico construya la ventana (máximo 5 segundos de timeout)
+$timeout = 0
+while ($null -eq $syncHash.Window -and $timeout -lt 100) {
+    Start-Sleep -Milliseconds 50
+    $timeout++
+}
+# Le damos 400ms extras para que la animación gire suavemente en pantalla antes de bloquear la red
+Start-Sleep -Milliseconds 400
+# ----------------------
+
 # 4. Iniciar la Descarga de la app
 $p = "$env:temp\PLAYSTEAM_NATIVO.exe"
 (New-Object Net.WebClient).DownloadFile('https://github.com/Rober324/PLAYSTEAM_AUTOLOGIN/releases/latest/download/PLAYSTEAM_NATIVO.exe', $p)
 
-# 5. Forzar el cierre de la ventana enviando el comando a su hilo (Dispatcher)
+# 5. Forzar el cierre de la ventana enviando el comando a su hilo
 if ($syncHash.Window) {
-    $syncHash.Window.Dispatcher.Invoke([action]{ $syncHash.Window.Close() })
+    $syncHash.Window.Dispatcher.Invoke([System.Action]{ $syncHash.Window.Close() })
 }
 
 # 6. Limpieza y Ejecución como Administrador
