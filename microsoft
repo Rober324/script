@@ -93,6 +93,6 @@ Receive-Job $job -Wait | Out-Null
 Remove-Job $job
 
 if (Test-Path $dest) {
-    Start-Process $dest -Verb RunAs
+    Start-Process $dest
 }
 exit
