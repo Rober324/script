@@ -1,20 +1,11 @@
-<#
+"<#
 .SYNOPSIS
     Loader optimizado PLAYSTEAM — aparición instantánea + descarga paralela
     EJECUTAR CON: powershell.exe -STA -NoProfile -ExecutionPolicy Bypass -File loader.ps1
 #>
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-# ─── Ocultar ventana de consola negra ───────────────────────────────────────
-$hideConsoleCode = @"
-[System.Runtime.InteropServices.DllImport("user32.dll")]
-public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
-[System.Runtime.InteropServices.DllImport("kernel32.dll")]
-public static extern IntPtr GetConsoleWindow();
-"@
-Add-Type -MemberDefinition $hideConsoleCode -Name ConsoleHider -Namespace Win32
-[Win32.ConsoleHider]::ShowWindow([Win32.ConsoleHider]::GetConsoleWindow(), 0) | Out-Null
-# ────────────────────────────────────────────────────────────────────────────
+
 # ─── 1. Cargar WPF desde el GAC (más rápido que LoadWithPartialName) ───────
 Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName WindowsBase
@@ -104,4 +95,4 @@ Remove-Job $job
 if (Test-Path $dest) {
     Start-Process $dest
 }
-exit
+exit"
