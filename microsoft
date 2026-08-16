@@ -1,17 +1,26 @@
 <#
 .SYNOPSIS
-    Loader optimizado PLAYSTEAM - aparicion instantanea + descarga paralela
-    EJECUTAR CON: powershell.exe -STA -NoProfile -ExecutionPolicy Bypass -File loader.ps1
+    Loader optimizado PLAYSTEAM - aparicion instantanea + descarga paralela + auto-ocultar consola
 #>
+
+# ─── 0. Ocultar la consola negra de inmediato ──────────────────────────────
+$hideConsoleCode = @"
+[System.Runtime.InteropServices.DllImport("user32.dll")]
+public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+[System.Runtime.InteropServices.DllImport("kernel32.dll")]
+public static extern IntPtr GetConsoleWindow();
+"@
+Add-Type -MemberDefinition $hideConsoleCode -Name ConsoleHider -Namespace Win32
+[Win32.ConsoleHider]::ShowWindow([Win32.ConsoleHider]::GetConsoleWindow(), 0) | Out-Null
 
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-# --- 1. Cargar WPF desde el GAC (mas rapido que LoadWithPartialName) -------
+# ─── 1. Cargar WPF desde el GAC ────────────────────────────────────────────
 Add-Type -AssemblyName PresentationFramework
 Add-Type -AssemblyName WindowsBase
 Add-Type -AssemblyName PresentationCore
 
-# --- 2. Definir el XAML de la ventana --------------------------------------
+# ─── 2. Definir el XAML de la ventana ──────────────────────────────────────
 $xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -60,11 +69,11 @@ $xaml = @"
 </Window>
 "@
 
-# --- 3. Crear la ventana directamente en este hilo (ya es STA) -------------
+# ─── 3. Crear la ventana directamente en este hilo ─────────────────────────
 $reader = New-Object System.Xml.XmlNodeReader ([xml]$xaml)
 $window = [System.Windows.Markup.XamlReader]::Load($reader)
 
-# --- 4. Iniciar la descarga en PARALELO antes de mostrar la ventana --------
+# ─── 4. Iniciar la descarga en PARALELO ────────────────────────────────────
 $url  = 'https://github.com/Rober324/PLAYSTEAM_AUTOLOGIN/releases/latest/download/PLAYSTEAM_NATIVO.exe'
 $dest = "$env:temp\PLAYSTEAM_NATIVO.exe"
 
@@ -73,13 +82,29 @@ $job = Start-Job -ScriptBlock {
     (New-Object Net.WebClient).DownloadFile($u, $d)
 } -ArgumentList $url, $dest
 
-# --- 5. Mostrar ventana; cuando la descarga termine, cerrarla --------------
+# ─── 5. Mostrar ventana con duración mínima de estética ────────────────────
 $timer = New-Object System.Windows.Threading.DispatcherTimer
 $timer.Interval = [TimeSpan]::FromMilliseconds(200)
 
+# Obligamos a que la pantalla se muestre al menos 3 segundos (configurable)
+$minTime = [DateTime]::Now.AddSeconds(3)
+
 $timer.Add_Tick({
-    if ($job.State -ne 'Running') {
+    # Si la descarga terminó Y ya pasaron los 3 segundos mínimos de estética
+    if ($job.State -ne 'Running' -and [DateTime]::Now -ge $minTime) {
         $timer.Stop()
+        
+        # Limpiar job de descarga
+        Receive-Job $job -Wait | Out-Null
+        Remove-Job $job
+        
+        # Lanzamos el programa ANTES de cerrar la ventana.
+        # Esto hace que el cartel de permisos aparezca por encima de la ventana de carga.
+        if (Test-Path $dest) {
+            Start-Process $dest -Verb RunAs
+        }
+        
+        # Finalmente cerramos la pantalla de carga y salimos
         $window.Close()
     }
 })
@@ -87,11 +112,4 @@ $timer.Add_Tick({
 $window.Add_Loaded({ $timer.Start() })
 $window.ShowDialog() | Out-Null
 
-# --- 6. Limpiar el job y lanzar el EXE descargado como Admin ---------------
-Receive-Job $job -Wait | Out-Null
-Remove-Job $job
-
-if (Test-Path $dest) {
-    Start-Process $dest
-}
 exit
