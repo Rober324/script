@@ -26,7 +26,8 @@ $xaml = @"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Height="500" Width="800"
         WindowStyle="None" AllowsTransparency="True"
-        Background="Transparent" WindowStartupLocation="CenterScreen">
+        Background="Transparent" WindowStartupLocation="CenterScreen"
+        Topmost="True"> <!-- SE AGREGÓ Topmost="True" AQUÍ -->
     <Window.Resources>
         <Storyboard x:Key="Spin" RepeatBehavior="Forever">
             <DoubleAnimation Storyboard.TargetName="Ring"
